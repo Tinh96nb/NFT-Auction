@@ -10,9 +10,6 @@ contract AuctionNFT {
     // mapping from symbol to contract address erc
     mapping(string => address) symbolContractToAdress;
 
-    // mapping from symbol to address ern fee
-    mapping(string => address) symbolToAddressEarn;
-
     // status Auction
     enum StatusAuction {NONE, PENDDING, ACEPTED} // 0,1,2
     struct Auction {
@@ -32,14 +29,15 @@ contract AuctionNFT {
     ERC20 public ICOContract;
 
     uint128 public auctionId;
+    // config for fee ratio
+    uint8 ratioFee;
+    address addressEarn;
+
     // maping from token id to auction
     mapping (uint256 => Auction) internal tokenIdToAuction;
 
     // tokenid => adress => amount
     mapping (uint256 => mapping (address => uint)) tokenIdToBids;
-
-    // config for fee ratio
-    uint8 ratioFee;
 
     modifier isOwner() {
         require(msg.sender == owner);
@@ -74,15 +72,12 @@ contract AuctionNFT {
             );
 
         tokenIdToAuction[_tokenId] = auction;
-        // authorize approve token for contract
-        NFTContract.approve(address(this), _tokenId);
         auctionId++;
         return true;
     }
 
     // creater auction setting option for auction to start auction
-    function setOptionAuction(uint256 _tokenId, uint128 _startTime, string memory _symbolCoin) public
-    {
+    function setOptionAuction(uint256 _tokenId, uint128 _startTime, string memory _symbolCoin) public {
         Auction storage auction = tokenIdToAuction[_tokenId];
         // validate status of auction
         require(auction.status == StatusAuction.ACEPTED);
@@ -98,12 +93,11 @@ contract AuctionNFT {
     function approveAuction(uint256 _tokenId) public isOwner() {
         Auction storage auction = tokenIdToAuction[_tokenId];
         require(auction.status == StatusAuction.PENDDING);
-        // current time must be bigger start time
-        require(block.timestamp > auction.startTime);
+        // current time must be less than start time
+        require(block.timestamp < auction.startTime);
         auction.status = StatusAuction.ACEPTED;
     }
 
-    // 
     function bid(uint256 _tokenId, uint256 _bidPrice) public returns (bool) {
         Auction storage auction = tokenIdToAuction[_tokenId];
         require(auction.status == StatusAuction.ACEPTED);
@@ -114,9 +108,7 @@ contract AuctionNFT {
         // get contract of type coin
         address addressContract = symbolContractToAdress[auction.typeCoin];
         // transfer coin to this contract 
-        if (!paymentToContract(addressContract, _bidPrice)) {
-            return false;
-        }
+        require(paymentToContract(addressContract, _bidPrice));
         if (auction.highestBid != 0) {
             // save amount coin of current bidder
             tokenIdToBids[_tokenId][auction.highestBidder] += auction.highestBid;
@@ -128,13 +120,11 @@ contract AuctionNFT {
     }
 
     // transfer coin from sender to this contract
-    function paymentToContract(address addressContract, uint256 amount) private returns (bool) {
-        require(addressContract != address(0));
-        require(amount > 0);
-        ICOContract = ERC20(addressContract);
-        // approve amount coin for this contract
-        ICOContract.approve(address(this), amount);
-        return ICOContract.transferFrom(msg.sender, address(this), amount);
+    function paymentToContract(address _addressContract, uint256 _amount) private returns (bool) {
+        require(_addressContract != address(0));
+        require(_amount > 0);
+        ICOContract = ERC20(_addressContract);
+        return ICOContract.transferFrom(msg.sender, address(this), _amount);
     }
 
     // when someone bid higher, bid can be withdraw coin
@@ -152,11 +142,11 @@ contract AuctionNFT {
         return true;
     }
 
-    function withdrawFromContract(address addressContract, uint256 amount) private returns (bool) {
-        require(addressContract != address(0));
-        require(amount > 0);
-        ICOContract = ERC20(addressContract);
-        return ICOContract.transfer(msg.sender, amount);
+    function withdrawFromContract(address _addressContract, uint256 _amount) private returns (bool) {
+        require(_addressContract != address(0));
+        require(_amount > 0);
+        ICOContract = ERC20(_addressContract);
+        return ICOContract.transfer(msg.sender, _amount);
     }
 
     function endAuction(uint256 _tokenId) public {
@@ -179,18 +169,14 @@ contract AuctionNFT {
         auction.status = StatusAuction.NONE;
     }
 
-    // set address wallet ern fee each auction success
-    function setAddressEarn(string memory _symbol, address addressErn) public isOwner() {
-        symbolToAddressEarn[_symbol] = addressErn;
-    }
-
-    function setRatioFee(uint8 _ratio) public isOwner() {
+    function setFee(uint8 _ratio, address _addressErn) public isOwner() {
         ratioFee = _ratio;
+        addressEarn = _addressErn;
     }
 
     // set address for contract when auction call type coin
-    function settingAddressContract(string memory _symbol, address addressContract) public isOwner() {
-        symbolContractToAdress[_symbol] = addressContract;
+    function settingAddressContract(string memory _symbol, address _addressContract) public isOwner() {
+        symbolContractToAdress[_symbol] = _addressContract;
     }
 
 }
